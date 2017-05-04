@@ -1,0 +1,16 @@
+# Game: Tales of Vesperia (XBOX360)
+# by fatduck     Aug09
+# script for QuickBMS http://aluigi.org/papers.htm#quickbms
+
+idstring "FPS4"
+endian big
+get NUMRES long
+goto 0x1C
+
+for i = 1 to NUMRES
+    get RESSTART long
+    get CHUNKSIZE long
+    get RESSIZE long
+    getdstring RESNAME 0x20    
+    log RESNAME RESSTART RESSIZE
+next i
