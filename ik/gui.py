@@ -14,9 +14,7 @@ class IKChain(object):
     def __init__(self, l):
         self.l = l
         self.n = len(l)
-        self.theta = [0] * self.n
-        for i in xrange(self.n):
-            self.theta[i] = random.uniform(-0.001, 0.001)
+        self.theta = [0.0] * self.n
         self.jx = []
         for i in xrange(self.n):
             self.jx.append(self.l[i])

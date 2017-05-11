@@ -19,6 +19,8 @@ def solve(l, theta, t, max_iter=10, epsilon=1e-3):
         e = numpy.matrix([[e[0]], [e[1]]])
         #print "error:"
         #print numpy.linalg.norm(e)
+        #print "e"
+        #print e
         if numpy.linalg.norm(e) < epsilon:
             break
         j = calc_jacobian(jx, jy)
@@ -27,13 +29,15 @@ def solve(l, theta, t, max_iter=10, epsilon=1e-3):
         #print j
         #print "gradient checking"
         #print j_val
+        #print "inverse of jacobian:"
         jinv = numpy.linalg.pinv(j)
+        #print jinv
         dtheta = jinv * e
         #print "dtheta"
         #print dtheta
         #print "verify dtheta"
         #print j * dtheta - e
-        opt_theta += step * dtheta
+        opt_theta = opt_theta + step * dtheta
         #print "new theta=", opt_theta
         i += 1
     return opt_theta.getA1(), jx, jy
@@ -119,4 +123,9 @@ if __name__ == "__main__":
     calc_world_positions(l, opt_theta, lx, ly)
     for i in xrange(4):
         # print "%.2f, %.2f" % (lx[i], ly[i])
-        print lx[i], ly[i]    
+        print lx[i], ly[i]
+    solve([1, 1, 1, 1], [0, 0, 0, 0], [2, 2])
+    
+    opt_theta = numpy.matrix([0, 0, 0, 0]).reshape(4, 1)
+    opt_theta += 1.0 * numpy.matrix([[0.1],[0.2],[0.3],[0.4]])
+    print opt_theta
