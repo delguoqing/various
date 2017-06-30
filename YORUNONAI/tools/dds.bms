@@ -1,0 +1,144 @@
+endian BIG
+idstring G1TG0060
+set MEMORY_FILE binary "\x44\x44\x53\x20\x7C\x00\x00\x00\x07\x10\x08\x00\x80\x00\x00\x00\x80\x00\x00\x00\x00\x20\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20\x00\x00\x00\x04\x00\x00\x00\x44\x58\x54\x31\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+
+get dataSize long
+get dataOffset long
+get texCount long
+get ukn1 long
+get ukn2 long
+for i = 0 < texCount
+get ukn3 long
+next i
+goto dataOffset
+savepos OFFTABLE
+
+set NUM 1
+for i = 0 < texCount
+endian BIG
+math NUM + 1
+get NAME BASENAME
+string NAME + "_"
+string NAME += NUM
+string NAME + ".dds"
+goto OFFTABLE
+
+print %OFFTABLE%
+set JUMP 0
+get JUMP long
+print %JUMP%
+
+savepos OFFTABLE
+math JUMP + dataOffset
+goto JUMP
+get ukn4 byte
+get texC byte
+get texD byte
+get NULL byte
+get NULL long
+get NULL long
+get NULL long
+get NULL long
+set set1 texD
+set set2 texD
+savepos OFFSET
+endian LITTLE
+math set1 & 0xF0
+math set1 / 16
+math set2 & 0x0F
+set texH 2
+set texW 2
+Math texW p set1
+Math texH p set2
+putVarChr MEMORY_FILE 0x0C texH short
+putVarChr MEMORY_FILE 0x10 texW short
+if texC == 0x01
+print "{0x01} ARGB32 Found!"
+set bbp 32
+math MAGIC = texW
+math MAGIC * texH
+math MAGIC / 0x4
+math MAGIC * 0x10
+putVarChr MEMORY_FILE 0x14 MAGIC long
+putVarChr MEMORY_FILE 0x50 0x41 long
+putVarChr MEMORY_FILE 0x54 0x00 byte
+putVarChr MEMORY_FILE 0x55 0x00 byte
+putVarChr MEMORY_FILE 0x56 0x00 byte
+putVarChr MEMORY_FILE 0x57 0x00 byte
+putVarChr MEMORY_FILE 0x58 0x20 long
+putVarChr MEMORY_FILE 0x5E 0xFF Short
+putVarChr MEMORY_FILE 0x61 0xFF Short
+putVarChr MEMORY_FILE 0x64 0xFF Short
+putVarChr MEMORY_FILE 0x6B 0xFF Short
+endif
+if texC == 0x06
+print "{0x06} DXT1 Found!"
+set bbp 4
+math MAGIC = texW
+math MAGIC * texH
+math MAGIC / 0x2
+putVarChr MEMORY_FILE 0x14 MAGIC long
+putVarChr MEMORY_FILE 0x50 0x41 long
+putVarChr MEMORY_FILE 0x54 0x44 byte
+putVarChr MEMORY_FILE 0x55 0x58 byte
+putVarChr MEMORY_FILE 0x56 0x54 byte
+putVarChr MEMORY_FILE 0x57 0x31 byte
+putVarChr MEMORY_FILE 0x58 0x00 long
+putVarChr MEMORY_FILE 0x5E 0x00 Short
+putVarChr MEMORY_FILE 0x61 0x00 Short
+putVarChr MEMORY_FILE 0x64 0x00 Short
+putVarChr MEMORY_FILE 0x6B 0x00 Short
+endif
+if texC == 0x08
+print "{0x08} DXT5 Found!"
+set bbp 8
+math MAGIC = texW
+math MAGIC * texH
+putVarChr MEMORY_FILE 0x14 MAGIC long
+putVarChr MEMORY_FILE 0x50 0x04 long
+putVarChr MEMORY_FILE 0x54 0x44 byte
+putVarChr MEMORY_FILE 0x55 0x58 byte
+putVarChr MEMORY_FILE 0x56 0x54 byte
+putVarChr MEMORY_FILE 0x57 0x35 byte
+putVarChr MEMORY_FILE 0x58 0x00 long
+putVarChr MEMORY_FILE 0x5E 0x00 Short
+putVarChr MEMORY_FILE 0x61 0x00 Short
+putVarChr MEMORY_FILE 0x64 0x00 Short
+putVarChr MEMORY_FILE 0x6B 0x00 Short
+endif
+set SIZE texH
+math SIZE * texW
+math bbp / 8
+math SIZE * bbp
+log NAME 0 0x80 MEMORY_FILE
+append
+log NAME OFFSET SIZE
+append
+next i
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

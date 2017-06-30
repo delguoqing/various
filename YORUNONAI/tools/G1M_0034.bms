@@ -1,0 +1,13 @@
+endian big
+for i
+findloc start string "G1M_0034"
+goto start
+print "%start%"
+savepos offset
+getdstring null 0x8
+get size long
+set name i
+string name + ".g1m"
+log name offset size
+
+next i
