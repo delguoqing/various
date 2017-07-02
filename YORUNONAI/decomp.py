@@ -14,7 +14,7 @@ def decomp(path):
 	end_off = len(data)
 	data_out = ""
 	while off < end_off:
-		blk_size = struct.unpack(">I", data[:4])[0]
+		blk_size = struct.unpack("<I", data[:4])[0]
 		if blk_size == 0:
 			break
 		print "off 0x%x, size 0x%x" % (off, blk_size)
