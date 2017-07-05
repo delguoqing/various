@@ -34,4 +34,3 @@ def parse_bone_names_using_g1a_path(path):
 			if fname.endswith(".bin"):
 				return parse_bone_names(os.path.join(path, fname))
 	return ()
-	

@@ -3,34 +3,11 @@ import struct
 import os
 import math
 import sys
-from util import get_getter, count, summary, summary_all, dump_data, log
+from util import get_getter, count, summary, summary_all, dump_data, log, swap_fourCC
 from game_util import parse_bone_names_from_package_folder
+from consts import *
 
 import g1m_export
-
-# fvf
-SEMATIC_NAME_MAP = {
-	0x0: "POSITION",
-	0x100: "BLENDWEIGHTS",	# last weight can be computed by 1.0 - sum(BLENDWEIGHTS)
-	0x200: "BLENDINDICES",
-	0x300: "NORMAL",
-	0x500: "TEXCOORD0",
-	0x501: "TEXCOORD1",
-	0x502: "TEXCOORD2",
-	0x503: "TEXCOORD3",
-	0x504: "TEXCOORD4",
-	0x600: "PACKED(TANGENT+BINORMAL)",	# (float3+sign)
-	0xa00: "COLOR0",
-}
-
-DATA_TYPE_MAP = {
-	0x0: "float",
-	0x100: "float2",
-	0x200: "float3",
-	0x300: "float4",
-	0x500: "int4",
-	0xd00: "RGBA"
-}
 
 class CMeshInfo(object):
 	def __init__(self, mat_index, mesh_index, vert_start, vert_count, index_start,
@@ -62,33 +39,33 @@ class CMeshInfo(object):
 		
 def parse(data, bone_names=()):
 	ignore_chunks = set([
-		"G1M_0036",
-		"G1MS0032",
-		"G1MM0020",
+		G1M_0036,
+		G1MS0032,
+		G1MM0020,
 	])
 	for chunk_data in iter_chunk(data):
-		get = get_getter(chunk_data, ">")
+		get = get_getter(chunk_data, "<")
 		chunk_name = get(0x0, "8s")
 		chunk_size = get(0x8, "I")
 		##################
 		# ignore chunks, for debug
 		if chunk_name in ignore_chunks:
 			continue
-		if chunk_name.startswith("G1MG"):
+		if chunk_name.startswith(G1MG):
 			# dump_data("G1MG.bin", chunk_data)
 			parse_g1mg(chunk_data)	
-		elif chunk_name.startswith("G1MS"):
+		elif chunk_name.startswith(G1MS):
 			parse_g1ms(chunk_data, bone_names=bone_names)
-		elif chunk_name.startswith("G1MM"):
+		elif chunk_name.startswith(G1MM):
 			parse_g1mm(chunk_data)
 
 def dump_obj(data, out_path):
 	obj_text = ""
 	for chunk_data in iter_chunk(data):
-		get = get_getter(chunk_data, ">")
+		get = get_getter(chunk_data, "<")
 		chunk_name = get(0x0, "8s")
 		chunk_size = get(0x8, "I")
-		if chunk_name.startswith("G1MG"):
+		if chunk_name.startswith(G1MG):
 			g1mg = parse_g1mg(chunk_data)
 			obj_text = g1m_export.export_obj(g1mg)
 			break
@@ -99,10 +76,10 @@ def dump_obj(data, out_path):
 	return None
 
 def iter_chunk(data):
-	get = get_getter(data, ">")
+	get = get_getter(data, "<")
 	
 	fourcc = get(0x0, "8s")
-	assert fourcc == "G1M_0036", "invalid g1m file!"
+	assert fourcc == G1M_0036, "invalid g1m file!"
 	
 	filesize = get(0x8, "I")
 	assert filesize == len(data), "file size not match, file may be corrupted!"
@@ -125,11 +102,11 @@ def iter_chunk(data):
 	assert off == filesize, "invalid file size not match!!"
 
 def iter_g1mg_subchunk(data):
-	get = get_getter(data, ">")
+	get = get_getter(data, "<")
 	chunk_name = get(0x0, "8s")
 	chunk_size = get(0x8, "I")
 	platform = get(0xc, "4s")
-	assert platform == "PS3\x00", "platform error!"
+	assert platform == "DX9\x00", "platform error!"
 	unk = get(0x10, "I")
 	assert unk == 0x0, "null padding value!"
 	bbox = get(0x14, "6f")	# (xmin, ymin, zmin, xmax, ymax, zmax)
@@ -143,19 +120,19 @@ def iter_g1mg_subchunk(data):
 
 def get_g1mg_subchunk_data(data, schunk_type):
 	for chunk_data in iter_chunk(data):
-		get = get_getter(chunk_data, ">")
+		get = get_getter(chunk_data, "<")
 		chunk_name = get(0x0, "8s")
 		chunk_size = get(0x8, "I")
-		if chunk_name.startswith("G1MG"):
+		if chunk_name.startswith(G1MG):
 			for subchunk_data in iter_g1mg_subchunk(chunk_data):
-				sub_get = get_getter(subchunk_data, ">")
+				sub_get = get_getter(subchunk_data, "<")
 				if sub_get(0x0, "I") == schunk_type:
 					return subchunk_data
 			return None
 
 def parse_g1mg_subchunk_0x10001(schunk_data):
 	dump_chunk = True
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	entry_count = get(0x8, "I")
 	reserved = get(0xc, "I")
@@ -171,7 +148,7 @@ def parse_g1mg_subchunk_0x10002(schunk_data):
 	log("========", lv=1)
 	log("materials", lv=1)
 	log("========", lv=1)
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	mat_count = get(0x8, "I")
 	# dump_data("g1mg_0x10002.bin", schunk_data)
@@ -206,7 +183,7 @@ def parse_g1mg_subchunk_0x10003(schunk_data):
 	log("uniforms", lv=0)
 	log("================", lv=0)
 	dump_chunk = False
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	uniform_blk_cnt = get(0x8, "I")
 	offset = 0xc
@@ -239,7 +216,7 @@ def parse_g1mg_subchunk_0x10003(schunk_data):
 	
 # vb
 def parse_g1mg_subchunk_0x10004(schunk_data):
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	mesh_seg_count = get(0x8, "I")
 	off = 0xc
@@ -259,7 +236,7 @@ def parse_g1mg_subchunk_0x10004(schunk_data):
 def parse_g1mg_subchunk_0x10005(schunk_data):
 	fvf_list = []
 	
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	fvf_count = get(0x8, "I")
 	log("fvf count", fvf_count, lv=0)
@@ -292,7 +269,7 @@ def parse_g1mg_subchunk_0x10005(schunk_data):
 # joint mapping?
 def parse_g1mg_subchunk_0x10006(schunk_data):
 	dump_chunk = False
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	entry_count = get(0x8, "I")
 	off = 0xc
@@ -310,7 +287,7 @@ def parse_g1mg_subchunk_0x10006(schunk_data):
 # ib
 def parse_g1mg_subchunk_0x10007(schunk_data):
 	print "index buffer block"
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	ib_count = get(0x8, "I")
 	off = 0xc
@@ -331,7 +308,7 @@ def parse_g1mg_subchunk_0x10007(schunk_data):
 	
 # mesh
 def parse_g1mg_subchunk_0x10008(schunk_data):
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	print "mesh block:"
 	mesh_count = get(0x8, "I")
@@ -353,7 +330,7 @@ def parse_g1mg_subchunk_0x10008(schunk_data):
 	return {"mesh_info_list": mesh_info_list}
 	
 def parse_g1mg_subchunk_0x10009(schunk_data):
-	get = get_getter(schunk_data, ">")
+	get = get_getter(schunk_data, "<")
 	schunk_type, schunk_size = get(0x0, "2I")
 	unk0 = get(0x8, "I")
 	assert unk0 == 1 or unk0 == 2
@@ -390,7 +367,7 @@ def parse_g1mg_subchunk_0x10009(schunk_data):
 def parse_g1mg(data):
 	g1mg = {}
 	for schunk_data in iter_g1mg_subchunk(data):
-		get = get_getter(schunk_data, ">")
+		get = get_getter(schunk_data, "<")
 		schunk_type, schunk_size = get(0x0, "2I")
 		
 		print "chunk_type=0x%x, chunk_size=0x%x" % (schunk_type, schunk_size)
@@ -406,7 +383,7 @@ def parse_g1mg(data):
 	
 # s = skeleton
 def parse_g1ms(data, bone_names=()):
-	get = get_getter(data, ">")
+	get = get_getter(data, "<")
 	fourcc = get(0x0, "8s")
 	assert fourcc == "G1MS0032", "invalid g1ms chunk"
 	g1ms_size = get(0x8, "I")
@@ -458,22 +435,6 @@ def parse_g1ms(data, bone_names=()):
 		assert math.fabs(rot[0] ** 2 + rot[1] ** 2 + rot[2] ** 2 + rot[3] ** 2 - 1.0) < 0.01
 		assert math.fabs(pos[-1] - 1.0) < 0.01
 		off += 0x30
-	
-def get_vertex_data_by_datatype(data, offset, datatype):
-	get = get_getter(data, ">")
-	if datatype == "float":
-		return get(offset, "f")
-	elif datatype == "float2":
-		return get(offset, "2f")
-	elif datatype == "float3":
-		return get(offset, "3f")
-	elif datatype == "float4":
-		return get(offset, "4f")
-	elif datatype == "int4":
-		return get(offset, "4B")
-	elif datatype == "RGBA":
-		return hex(get(offset, "I"))
-	assert False, "impossible"
 			
 G1MG_SUBCHUNK_HANDLER = {
 	# 0x10001: parse_g1mg_subchunk_0x10001,
@@ -492,7 +453,7 @@ G1MG_SUBCHUNK_HANDLER = {
 # }
 # matrices
 def parse_g1mm(data):
-	get = get_getter(data, ">")
+	get = get_getter(data, "<")
 	fourcc = get(0x0, "8s")
 	assert fourcc == "G1MM0020", "invalid fourcc!!"
 	chunk_size = get(0x8, "I")
@@ -511,6 +472,6 @@ if __name__ == '__main__':
 	bone_names = parse_bone_names_from_package_folder(sys.argv[1])
 	
 	print "bone_names count: %d" % len(bone_names)
-	# dump_obj(data, sys.argv[1] + ".obj")
-	parse(data, bone_names)
+	dump_obj(data, sys.argv[1] + ".obj")
+	# parse(data, bone_names)
 	

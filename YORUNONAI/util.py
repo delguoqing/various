@@ -384,3 +384,10 @@ def set_log_level(lv):
 def log(*args, **kwargs):
 	if kwargs.get("lv", 0) >= log_level:
 		print " ".join(map(str, args))
+
+def swap_fourCC(fourCC):
+	s = ""
+	for i in xrange(0, len(fourCC), 4):
+		for ch in reversed(fourCC[i: i + 4]):
+			s += ch;
+	return s

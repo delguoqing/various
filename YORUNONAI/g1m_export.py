@@ -1,3 +1,22 @@
+from util import log, get_getter
+from consts import *
+
+def get_vertex_data_by_datatype(data, offset, datatype):
+	get = get_getter(data, "<")
+	if datatype == "float":
+		return get(offset, "f")
+	elif datatype == "float2":
+		return get(offset, "2f")
+	elif datatype == "float3":
+		return get(offset, "3f")
+	elif datatype == "float4":
+		return get(offset, "4f")
+	elif datatype == "int4":
+		return get(offset, "4B")
+	elif datatype == "RGBA":
+		return hex(get(offset, "I"))
+	assert False, "impossible"
+
 def export_obj(g1mg):
 	mi_list = g1mg.get("mesh_info_list")
 	vb_info_list = g1mg.get("vertex_buffer_list")
@@ -32,8 +51,8 @@ def export_obj(g1mg):
 		log("===> fvf %d" % i, lv=0)
 		vb = {}
 		for offset, sematics, data_type, vb_ref_idx, vb_ref_list in fvf:
-			sematic_name = SEMATIC_NAME_MAP[sematics]
-			data_type_name = DATA_TYPE_MAP[data_type]
+			sematic_name = SEMATIC_NAME_MAP[sematics]	# e.g. POSITION
+			data_type_name = DATA_TYPE_MAP[data_type]	# e.g. float4
 			fvf_size, vcount, unk2, vb_offset, vb_chunk = vb_info_list[vb_ref_list[vb_ref_idx]]
 			vb[sematic_name] = []
 			off = vb_offset

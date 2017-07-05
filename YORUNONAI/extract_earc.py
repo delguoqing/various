@@ -1,19 +1,22 @@
 import sys
 import os
 from util import get_getter
-	
+from util import swap_fourCC
+
+EARC = swap_fourCC("EARC")
+
 def extract(path):
 	f = open(path, "rb")
 	data = f.read()
 	f.close()
 	
-	get = get_getter(data, ">")
+	get = get_getter(data, "<")
 	
 	fourcc = get(0x0, "4s")
-	assert fourcc == "EARC", "invalid EARC file!"
+	assert fourcc == EARC, "invalid EARC file!"
 	unk = get(0x4, "I")
-	if unk != 0x01000000:
-		assert False, "warning: not 0x01000000"
+	if unk != 0x01:
+		assert False, "warning: not 0x01"
 	
 	data_size = get(0x8, "I")
 	header_size = get(0xc, "I")
@@ -21,8 +24,10 @@ def extract(path):
 	
 	file_count = get(0x14, "I")
 	unk = get(0x18, "I")
-	if unk != 1:
-		assert False, "warning: not 1"
+
+	# assertion fails on PC version
+	# if unk != 1:
+	# 	assert False, "warning: not 1"
 	
 	fixed_offset = get(0x1c, "I")
 	
