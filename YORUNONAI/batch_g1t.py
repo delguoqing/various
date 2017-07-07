@@ -2,6 +2,7 @@ import sys
 import os
 import glob
 import g1t
+from consts import G1TG0060
 
 ext = ".elixir"
 def_root = r"A.Land.Without.Night.JAP.PS3-ALI213/BLJM61264-[A.Land.Without.Night.JAP.PS3-ALI213]/PS3_GAME/USRDIR/Data/PS3"
@@ -20,6 +21,6 @@ for path, dirs, files in os.walk(root):
 				data = f.read()
 				fourcc = data[:8]
 				f.close()
-				if fourcc == "G1TG0060":
+				if fourcc == G1TG0060:
 					print "parsing %s" % fname
 					g1t.tex_extract(fname)

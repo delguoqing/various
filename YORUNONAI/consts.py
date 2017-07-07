@@ -27,6 +27,7 @@ DATA_TYPE_MAP = {
 G1M_0036 = swap_fourCC("G1M_0036")
 G1MS0032 = swap_fourCC("G1MS0032")
 G1MM0020 = swap_fourCC("G1MM0020")
+G1TG0060 = swap_fourCC("G1TG0060")
 G1MG = swap_fourCC("G1MG")
 G1MS = swap_fourCC("G1MS")
 G1MM = swap_fourCC("G1MM")

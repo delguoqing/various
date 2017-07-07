@@ -139,3 +139,6 @@ def export_obj(g1mg):
 			# dumping tri_list
 			base_i += mi.vert_count
 	return "\n".join(text)
+
+def export_gtb(g1mg, g1ms):
+	pass

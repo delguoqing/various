@@ -385,7 +385,7 @@ def parse_g1mg(data):
 def parse_g1ms(data, bone_names=()):
 	get = get_getter(data, "<")
 	fourcc = get(0x0, "8s")
-	assert fourcc == "G1MS0032", "invalid g1ms chunk"
+	assert fourcc == G1MS0032, "invalid g1ms chunk"
 	g1ms_size = get(0x8, "I")
 	assert g1ms_size == len(data), "invalid g1ms size"
 	bone_info_offset = get(0xc, "I")
@@ -455,7 +455,7 @@ G1MG_SUBCHUNK_HANDLER = {
 def parse_g1mm(data):
 	get = get_getter(data, "<")
 	fourcc = get(0x0, "8s")
-	assert fourcc == "G1MM0020", "invalid fourcc!!"
+	assert fourcc == G1MM0020, "invalid fourcc!!"
 	chunk_size = get(0x8, "I")
 	assert chunk_size == len(data), "ok"
 	mat_count = get(0xc, "I")
