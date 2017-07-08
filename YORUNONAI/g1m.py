@@ -3,6 +3,8 @@ import struct
 import os
 import math
 import sys
+import json
+import zlib
 from util import get_getter, count, summary, summary_all, dump_data, log, swap_fourCC
 from game_util import parse_bone_names_from_package_folder
 from consts import *
@@ -74,6 +76,26 @@ def dump_obj(data, out_path):
 		fout.write(obj_text)
 		fout.close()
 	return None
+
+def dump_gtb(data, out_path, compressed=True):
+	gtb = {}
+	for chunk_data in iter_chunk(data):
+		get = get_getter(chunk_data, "<")
+		chunk_name = get(0x0, "8s")
+		chunk_size = get(0x8, "I")
+		if chunk_name.startswith(G1MG):
+			g1mg = parse_g1mg(chunk_data)
+			gtb = g1m_export.export_gtb(g1mg)
+			break
+	if gtb:
+		data = json.dumps(gtb, indent=2, sort_keys=True, ensure_ascii=True)
+		if compressed:
+			fp = open(out_path, "wb")
+			fp.write("GTB\x00" + zlib.compress(data))
+		else:
+			fp = open(out_path, "w")
+			fp.write(data)
+		fp.close()
 
 def iter_chunk(data):
 	get = get_getter(data, "<")
@@ -473,5 +495,6 @@ if __name__ == '__main__':
 	
 	print "bone_names count: %d" % len(bone_names)
 	dump_obj(data, sys.argv[1] + ".obj")
+	dump_gtb(data, sys.argv[1] + ".gtb")
 	# parse(data, bone_names)
 	

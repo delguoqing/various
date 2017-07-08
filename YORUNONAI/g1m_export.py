@@ -17,14 +17,22 @@ def get_vertex_data_by_datatype(data, offset, datatype):
 		return hex(get(offset, "I"))
 	assert False, "impossible"
 
-def export_obj(g1mg):
+def parse_vb(g1mg, intern_state=None):
+	"""
+	g1mg: parsing result from parse_g1mg
+	intern_state: internal state in case you want to inspect it further, dict / None
+	"""
+
+	if intern_state is None:
+		intern_state = {}
+
 	mi_list = g1mg.get("mesh_info_list")
 	vb_info_list = g1mg.get("vertex_buffer_list")
 	ib_list = g1mg.get("index_buffer_list")
 	fvf_list = g1mg.get("fvf_list")
-		
+
 	if not all((mi_list, vb_info_list, ib_list)):
-		return
+		return []
 	print "exporting obj"
 	# print mi_list
 
@@ -38,8 +46,8 @@ def export_obj(g1mg):
 	# 		print "\tib error"
 	# 	# assert j == mi.i, "testing this!!"
 	# return
-	
-	# fill vb list	
+
+	# fill vb list
 	vb_list = []
 	has_unk = False
 	for i, fvf in enumerate(fvf_list):
@@ -51,8 +59,8 @@ def export_obj(g1mg):
 		log("===> fvf %d" % i, lv=0)
 		vb = {}
 		for offset, sematics, data_type, vb_ref_idx, vb_ref_list in fvf:
-			sematic_name = SEMATIC_NAME_MAP[sematics]	# e.g. POSITION
-			data_type_name = DATA_TYPE_MAP[data_type]	# e.g. float4
+			sematic_name = SEMATIC_NAME_MAP[sematics]  # e.g. POSITION
+			data_type_name = DATA_TYPE_MAP[data_type]  # e.g. float4
 			fvf_size, vcount, unk2, vb_offset, vb_chunk = vb_info_list[vb_ref_list[vb_ref_idx]]
 			vb[sematic_name] = []
 			off = vb_offset
@@ -66,9 +74,24 @@ def export_obj(g1mg):
 				off += fvf_size
 		vb_list.append(vb)
 
+	intern_state["has_unk"] = has_unk
+
+	return vb_list
+
+def export_obj(g1mg):
+	intern_state = {}
+
+	vb_list = parse_vb(g1mg, intern_state=intern_state)
+	if not vb_list:
+		return
+
+	mi_list = g1mg.get("mesh_info_list")
+	ib_list = g1mg.get("index_buffer_list")
+
 	text = []
-	if has_unk:
+	if intern_state["has_unk"]:
 		text.append("# HAS UNK")
+
 	base_i = 1
 	for j, mi in enumerate(mi_list):
 		text.append("o Obj%d" % j)
@@ -140,5 +163,94 @@ def export_obj(g1mg):
 			base_i += mi.vert_count
 	return "\n".join(text)
 
-def export_gtb(g1mg, g1ms):
-	pass
+def export_gtb(g1mg):
+	vb_list = parse_vb(g1mg)
+	if not vb_list:
+		return
+
+	mi_list = g1mg.get("mesh_info_list")
+	ib_list = g1mg.get("index_buffer_list")
+
+	gtb = {"objects": {}}
+
+	base_i = 0
+	for j, mi in enumerate(mi_list):
+
+		vb = vb_list[mi.mesh_index]
+		ib = ib_list[mi.mesh_index]
+		print "========= %d" % j
+		print str(mi)
+		print "vb, size=%d" % len(vb)
+		# print vb
+		print "ib, size=%d" % len(ib)
+		# print ib
+
+		print
+		# vb = vb_list[mi.unks0[1]]
+		assert len(vb["POSITION"]) >= mi.vert_count
+		assert len(ib) >= mi.index_count
+
+		dump_this = True or j in (1,)
+
+		if dump_this:
+
+			msh = {
+				"flip_v": 1, "double_sided": 0, "shade_smooth": True,
+				"vertex_num": mi.vert_count,
+			}
+
+			msh["textures"] = []
+			msh["position"] = []
+			msh["uv_count"] = 1
+			msh["uv0"] = []
+			msh["indices"] = []
+			msh["max_involved_joint"] = 0
+			gtb["objects"]["msh%d" % j] = msh
+
+			for i in xrange(mi.vert_start, mi.vert_start + mi.vert_count):
+				x, y, z = vb["POSITION"][i]
+				if "TEXCOORD0" in vb:
+					u, v = vb["TEXCOORD0"][i]
+					v = -v
+				else:
+					u, v = 0.0, 0.0
+				msh["position"].extend([x, y, z])
+				msh["uv0"].extend([u, v])
+
+			# dumping tri strip
+			is_tri_strip = True
+			if is_tri_strip:
+				f = []
+				rev = False
+				min_index = 0x7FFFFFFF
+				max_index = -1
+				for i in xrange(mi.index_start, mi.index_start + mi.index_count):
+					f.append(ib[i])
+					min_index = min(min_index, ib[i])
+					max_index = max(max_index, ib[i])
+					if len(f) < 3:
+						continue
+					if len(f) == 4:
+						f.pop(0)
+					assert len(f) == 3, "invalid ib!"
+					if f[-1] == 0xFFFF:	# restart strip
+						f = []
+						rev = False
+					else:
+						index_delta = base_i - mi.vert_start
+						if not rev:
+							msh["indices"].extend([f[0] + index_delta, f[1] + index_delta, f[2] + index_delta])
+						else:
+							msh["indices"].extend([f[2] + index_delta, f[1] + index_delta, f[0] + index_delta])
+						rev = not rev
+				print "min_index", min_index
+				print "max_index", max_index
+			else:	# dumping tri_list
+				assert mi.index_count % 3 == 0, "%d" % (mi.index_count % 3)
+				index_delta = base_i - mi.vert_start
+				for i in xrange(mi.index_start, mi.index_start + mi.index_count, 3):
+					msh["indices"].extend([ib[i] + index_delta, ib[i + 1] + index_delta, ib[i + 2] + index_delta])
+			msh["index_num"] = len(msh["indices"])
+
+	return gtb
+
