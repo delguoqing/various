@@ -61,7 +61,11 @@ def parse(data, bone_names=()):
 		elif chunk_name.startswith(G1MM):
 			parse_g1mm(chunk_data)
 
-def dump_obj(data, out_path):
+def dump_obj(in_path, out_path):
+	fin = open(in_path, "rb")
+	data = fin.read()
+	fin.close()
+
 	obj_text = ""
 	for chunk_data in iter_chunk(data):
 		get = get_getter(chunk_data, "<")
@@ -77,16 +81,34 @@ def dump_obj(data, out_path):
 		fout.close()
 	return None
 
-def dump_gtb(data, out_path, compressed=True):
-	gtb = {}
+def dump_gtb(in_path, out_path, compressed=True, tex_path=""):
+	fin = open(in_path, "rb")
+	data = fin.read()
+	fin.close()
+
+	g1mg = {}
 	for chunk_data in iter_chunk(data):
 		get = get_getter(chunk_data, "<")
 		chunk_name = get(0x0, "8s")
 		chunk_size = get(0x8, "I")
 		if chunk_name.startswith(G1MG):
 			g1mg = parse_g1mg(chunk_data)
-			gtb = g1m_export.export_gtb(g1mg)
 			break
+
+	if g1mg:
+		gtb = g1m_export.export_gtb(g1mg)
+
+	if gtb and tex_path:
+		basename = os.path.split(tex_path)[1]
+		format = basename + ".tex%d.dds"
+		for msh in gtb["objects"].itervalues():
+			if "textures" not in msh:
+				continue
+			for i in xrange(len(msh["textures"])):
+				tex_idx = msh["textures"][i][0]
+				tex_path = format % tex_idx
+				msh["textures"][i] = (tex_path, ) + tuple(msh["textures"][i][1:])
+
 	if gtb:
 		data = json.dumps(gtb, indent=2, sort_keys=True, ensure_ascii=True)
 		if compressed:
@@ -175,6 +197,9 @@ def parse_g1mg_subchunk_0x10002(schunk_data):
 	mat_count = get(0x8, "I")
 	# dump_data("g1mg_0x10002.bin", schunk_data)
 	off = 0xc
+
+	material_list = []
+
 	for mat_idx in xrange(mat_count):
 		unk0 = get(off + 0x0, "I")
 		assert unk0 == 0
@@ -186,6 +211,10 @@ def parse_g1mg_subchunk_0x10002(schunk_data):
 		assert 1 <= unk1 <= 7
 		assert unk2 == 1 or unk2 == -1
 		off += 0x10
+
+		material = {"texture_count": tex_count, "textures": []}
+		material_list.append(material)
+
 		for tex_idx in xrange(tex_count):
 			tex_identifier = get(off + 0x0, "H")
 			uv_chnl_idx, unk6 = get(off + 0x2, "HH")
@@ -197,7 +226,11 @@ def parse_g1mg_subchunk_0x10002(schunk_data):
 			assert 0 <= uv_chnl_idx <= 4, "works for this game!"
 			off += 0xc
 			log("tex_idx = %d, uv_channel_idx = %d, unk6 = %d, unk3 = %d, unk4 = %d, unk5 = %d" % (tex_identifier, uv_chnl_idx, unk6, unk3, unk4, unk5), lv=1)
+
+			material["textures"].append([tex_identifier, uv_chnl_idx])
+
 	log("")
+	return {"material_list": material_list}
 
 # uniforms
 def parse_g1mg_subchunk_0x10003(schunk_data):
@@ -487,14 +520,21 @@ def parse_g1mm(data):
 			print mat[j * 4: (j + 1) * 4]
 
 if __name__ == '__main__':
-	f = open(sys.argv[1], "rb")
-	data = f.read()
-	f.close()
-	
-	bone_names = parse_bone_names_from_package_folder(sys.argv[1])
-	
+	inpath = sys.argv[1]
+	if len(sys.argv) > 2:
+		tex_path = sys.argv[2]
+	else:
+		tex_path = ""
+
+	bone_names = parse_bone_names_from_package_folder(inpath)
+
+	outpath = inpath + ".gtb"
+	dump_gtb(inpath, outpath, compressed=False, tex_path=tex_path)
+
 	print "bone_names count: %d" % len(bone_names)
-	dump_obj(data, sys.argv[1] + ".obj")
-	dump_gtb(data, sys.argv[1] + ".gtb")
+
+	# outpath = inpath + ".obj"
+	# dump_obj(inpath, outpath)
+
 	# parse(data, bone_names)
 	

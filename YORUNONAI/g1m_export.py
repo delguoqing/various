@@ -1,5 +1,6 @@
-from util import log, get_getter
+from util import log, get_getter, triangle_strip_to_list
 from consts import *
+import operator
 
 def get_vertex_data_by_datatype(data, offset, datatype):
 	get = get_getter(data, "<")
@@ -125,42 +126,25 @@ def export_obj(g1mg):
 			
 			def new_face(a, b, c):
 				text.append("f %d/%d %d/%d %d/%d" % (a, a, b, b, c, c))
-				
-			# dumping tri strip
+
 			is_tri_strip = True
-			if is_tri_strip:
-				f = []
-				rev = False
-				min_index = 0x7FFFFFFF
-				max_index = -1
-				for i in xrange(mi.index_start, mi.index_start + mi.index_count):
-					f.append(ib[i])
-					min_index = min(min_index, ib[i])
-					max_index = max(max_index, ib[i])
-					if len(f) < 3:
-						continue
-					if len(f) == 4:
-						f.pop(0)
-					assert len(f) == 3, "invalid ib!"
-					if f[-1] == 0xFFFF:
-						f = []
-						rev = False
-					else:
-						index_delta = base_i - mi.vert_start
-						if not rev:
-							new_face(f[0] + index_delta, f[1] + index_delta, f[2] + index_delta)
-						else:
-							new_face(f[2] + index_delta, f[1] + index_delta, f[0] + index_delta)
-						rev = not rev
+			_ib = ib[mi.index_start: mi.index_start + mi.index_count]
+			index_delta = base_i - mi.vert_start
+			if is_tri_strip:	# dumping tri strip
+				_ib = triangle_strip_to_list(_ib, 0xFFFF)
+			else:	# dumping tri_list
+				assert mi.index_count % 3 == 0, "%d" % (mi.index_count % 3)
+			_ib = map(lambda _idx: _idx + index_delta, _ib)
+			for i in xrange(0, len(_ib), 3):
+				new_face(_ib[i], _ib[i + 1], _ib[i + 2])
+			if __debug__:
+				min_index = min(_ib)
+				max_index = max(_ib)
 				print "min_index", min_index
 				print "max_index", max_index
-			else:
-				assert mi.index_count % 3 == 0, "%d" % (mi.index_count % 3)
-				index_delta = base_i - mi.vert_start
-				for i in xrange(mi.index_start, mi.index_start + mi.index_count, 3):
-					new_face(ib[i] + index_delta, ib[i + 1] + index_delta, ib[i + 2] + index_delta)
-			# dumping tri_list
+
 			base_i += mi.vert_count
+
 	return "\n".join(text)
 
 def export_gtb(g1mg):
@@ -170,6 +154,7 @@ def export_gtb(g1mg):
 
 	mi_list = g1mg.get("mesh_info_list")
 	ib_list = g1mg.get("index_buffer_list")
+	mat_list = g1mg.get("material_list", [])
 
 	gtb = {"objects": {}}
 
@@ -195,62 +180,52 @@ def export_gtb(g1mg):
 		if dump_this:
 
 			msh = {
-				"flip_v": 1, "double_sided": 0, "shade_smooth": True,
-				"vertex_num": mi.vert_count,
+				"flip_v": 0, "double_sided": 0, "shade_smooth": True,
+				"vertex_num": mi.vert_count, "position": [], "indices": [],
+				"max_involved_joint": 0,
 			}
-
-			msh["textures"] = []
-			msh["position"] = []
-			msh["uv_count"] = 1
-			msh["uv0"] = []
-			msh["indices"] = []
-			msh["max_involved_joint"] = 0
 			gtb["objects"]["msh%d" % j] = msh
 
+			try:
+				mat = mat_list[mi.mat_index]
+			except IndexError:
+				mat = None
+
+			if mat:
+				msh["textures"] = []
+				uv_channels = map(operator.itemgetter(1), mat["textures"])
+				uv_channels = sorted(list(set(uv_channels)))
+				msh["uv_count"] = len(uv_channels)
+				for i in xrange(len(uv_channels)):
+					msh["uv%d" % i] = []
+				for i, (tex_idx, uv_chnl_idx) in enumerate(mat["textures"]):
+					msh["textures"].append((tex_idx, uv_chnl_idx))
+					if i == 0:
+						msh["textures"][-1] += ("diffuse", )
+
 			for i in xrange(mi.vert_start, mi.vert_start + mi.vert_count):
-				x, y, z = vb["POSITION"][i]
-				if "TEXCOORD0" in vb:
-					u, v = vb["TEXCOORD0"][i]
-					v = -v
-				else:
-					u, v = 0.0, 0.0
-				msh["position"].extend([x, y, z])
-				msh["uv0"].extend([u, v])
+				msh["position"].extend( vb["POSITION"][i] )
+				for _k, uv_chnl_idx in enumerate(uv_channels):
+					sematics = "TEXCOORD" + str(uv_chnl_idx)
+					u, v = (sematics in vb) and (vb[sematics][i]) or (0.0, 0.0)
+					msh["uv" + str(_k)].extend((u, -v))
 
 			# dumping tri strip
 			is_tri_strip = True
+			_ib = ib[mi.index_start: mi.index_start + mi.index_count]
 			if is_tri_strip:
-				f = []
-				rev = False
-				min_index = 0x7FFFFFFF
-				max_index = -1
-				for i in xrange(mi.index_start, mi.index_start + mi.index_count):
-					f.append(ib[i])
-					min_index = min(min_index, ib[i])
-					max_index = max(max_index, ib[i])
-					if len(f) < 3:
-						continue
-					if len(f) == 4:
-						f.pop(0)
-					assert len(f) == 3, "invalid ib!"
-					if f[-1] == 0xFFFF:	# restart strip
-						f = []
-						rev = False
-					else:
-						index_delta = base_i - mi.vert_start
-						if not rev:
-							msh["indices"].extend([f[0] + index_delta, f[1] + index_delta, f[2] + index_delta])
-						else:
-							msh["indices"].extend([f[2] + index_delta, f[1] + index_delta, f[0] + index_delta])
-						rev = not rev
-				print "min_index", min_index
-				print "max_index", max_index
+				msh["indices"] = triangle_strip_to_list(_ib, 0xFFFF)
 			else:	# dumping tri_list
 				assert mi.index_count % 3 == 0, "%d" % (mi.index_count % 3)
-				index_delta = base_i - mi.vert_start
-				for i in xrange(mi.index_start, mi.index_start + mi.index_count, 3):
-					msh["indices"].extend([ib[i] + index_delta, ib[i + 1] + index_delta, ib[i + 2] + index_delta])
+				msh["indices"] = _ib
+			msh["indices"] = map(lambda _idx: _idx - mi.vert_start, msh["indices"])
 			msh["index_num"] = len(msh["indices"])
+
+			if __debug__:
+				min_index = min(msh["indices"])
+				max_index = max(msh["indices"])
+				print "min_index", min_index
+				print "max_index", max_index
 
 	return gtb
 

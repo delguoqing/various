@@ -391,3 +391,25 @@ def swap_fourCC(fourCC):
 		for ch in reversed(fourCC[i: i + 4]):
 			s += ch;
 	return s
+
+def triangle_strip_to_list(indices, restart):
+	f = []
+	rev = False
+	ret = []
+	for i in xrange(len(indices)):
+		f.append(indices[i])
+		if len(f) < 3:
+			continue
+		if len(f) == 4:
+			f.pop(0)
+		assert len(f) == 3, "invalid indices buffer!"
+		if f[-1] == restart:  # restart strip
+			f = []
+			rev = False
+		else:
+			if not rev:
+				ret.extend([f[0], f[1], f[2]])
+			else:
+				ret.extend([f[2], f[1], f[0]])
+			rev = not rev
+	return ret
