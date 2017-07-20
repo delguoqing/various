@@ -66,13 +66,28 @@ def parse_vb(g1mg, intern_state=None):
 			vb[sematic_name] = []
 			off = vb_offset
 			for j in xrange(vcount):
-				vb[sematic_name].append(get_vertex_data_by_datatype(vb_chunk, off + offset, data_type_name))
+				attr_value = get_vertex_data_by_datatype(vb_chunk, off + offset, data_type_name)
+				if sematic_name == "BLENDWEIGHTS" and type(attr_value) == type(1.0):
+						attr_value = (attr_value, )
+				vb[sematic_name].append(attr_value)
 				if sematic_name == "UNK":
 					has_unk = True
 					tmp = vb[sematic_name][-1]
 					assert math.fabs(tmp[0] ** 2 + tmp[1] ** 2 + tmp[2] ** 2 - 1.0) < 1e-3
 					assert tmp[-1] == 1.0 or tmp[-1] == -1.0
 				off += fvf_size
+
+		if "BLENDWEIGHTS" in vb:
+			for i in xrange(vcount):
+				j = vb["BLENDINDICES"][i]
+				w = vb["BLENDWEIGHTS"][i]
+				if len(w) < len(j):
+					w = list(w)
+					rem_sum = 1.0 - sum(w)
+					if rem_sum > 1e-3:
+						w.append(rem_sum)
+					w.extend([0.0] * (len(j) - len(w)))
+					vb["BLENDWEIGHTS"][i] = tuple(w)
 		vb_list.append(vb)
 
 	intern_state["has_unk"] = has_unk
@@ -147,10 +162,10 @@ def export_obj(g1mg):
 
 	return "\n".join(text)
 
-def export_gtb(g1mg, g1ms=None):
+def gtb_dump_g1mg(g1mg, name):
 	vb_list = parse_vb(g1mg)
 	if not vb_list:
-		return
+		return []
 
 	mi_list = g1mg.get("mesh_info_list")
 	ib_list = g1mg.get("index_buffer_list")
@@ -183,14 +198,14 @@ def export_gtb(g1mg, g1ms=None):
 				"flip_v": 0, "double_sided": 0, "shade_smooth": True,
 				"vertex_num": mi.vert_count, "position": [], "indices": [],
 			}
-			if g1ms:
-				msh["max_involved_joint"] = 4
+			if "BLENDWEIGHTS" not in vb:
+				msh["max_involved_joint"] = 0
+			else:
+				msh["max_involved_joint"] = len(vb["BLENDWEIGHTS"][0])
 				msh["joints"] = []
 				msh["weights"] = []
-			else:
-				msh["max_involved_joint"] = 0
 
-			gtb["objects"]["msh%d" % j] = msh
+			gtb["objects"][name + str(j)] = msh
 
 			try:
 				mat = mat_list[mi.mat_index]
@@ -207,10 +222,10 @@ def export_gtb(g1mg, g1ms=None):
 				for i, (tex_idx, uv_chnl_idx) in enumerate(mat["textures"]):
 					msh["textures"].append((tex_idx, uv_chnl_idx))
 					if i == 0:
-						msh["textures"][-1] += ("diffuse", )
+						msh["textures"][-1] += ("diffuse",)
 
 			for i in xrange(mi.vert_start, mi.vert_start + mi.vert_count):
-				msh["position"].extend( vb["POSITION"][i] )
+				msh["position"].extend(vb["POSITION"][i])
 				for _k, uv_chnl_idx in enumerate(uv_channels):
 					sematics = "TEXCOORD" + str(uv_chnl_idx)
 					u, v = (sematics in vb) and (vb[sematics][i]) or (0.0, 0.0)
@@ -224,7 +239,7 @@ def export_gtb(g1mg, g1ms=None):
 			_ib = ib[mi.index_start: mi.index_start + mi.index_count]
 			if is_tri_strip:
 				msh["indices"] = triangle_strip_to_list(_ib, 0xFFFF)
-			else:	# dumping tri_list
+			else:  # dumping tri_list
 				assert mi.index_count % 3 == 0, "%d" % (mi.index_count % 3)
 				msh["indices"] = _ib
 			msh["indices"] = map(lambda _idx: _idx - mi.vert_start, msh["indices"])
@@ -235,6 +250,15 @@ def export_gtb(g1mg, g1ms=None):
 				max_index = max(msh["indices"])
 				print "min_index", min_index
 				print "max_index", max_index
+	return gtb
+
+def export_gtb(g1mg_dic, g1ms=None):
+	gtb = {
+		"objects": {}
+	}
+	for name, g1mg in g1mg_dic.iteritems():
+		_gtb = gtb_dump_g1mg(g1mg, name)
+		gtb["objects"].update(_gtb["objects"])
 
 	if g1ms:
 		skel = gtb["skeleton"] = {}
@@ -247,4 +271,3 @@ def export_gtb(g1mg, g1ms=None):
 			skel["matrix"].extend(b["matrix"].getA1())
 
 	return gtb
-

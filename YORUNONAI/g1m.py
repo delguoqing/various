@@ -6,9 +6,10 @@ import sys
 import json
 import zlib
 from util import get_getter, count, summary, summary_all, dump_data, log, swap_fourCC
-from game_util import parse_bone_names_from_package_folder
+from game_util import parse_bone_names_from_package_folder, parse_bone_names
 from consts import *
 import argparse
+import glob
 
 import g1m_export
 
@@ -94,17 +95,18 @@ def _parse_chunck(in_path, prefix, parse_func, *args):
 			return parse_func(chunk_data, *args)
 
 def dump_gtb(in_paths, out_path, compressed=True, tex_path="", bone_names=None):
-	g1mg = {}
-	g1ms = {}
+	g1ms = _parse_chunck(in_paths[-1], G1MS, parse_g1ms, bone_names)
+	if not g1ms["bones"]:	# in case of empty g1ms chunk
+		g1ms = {}
 
-	if len(in_paths) == 1:
-		g1mg = _parse_chunck(in_paths[0], G1MG, parse_g1mg)
-	elif len(in_paths) >= 2:
-		g1mg = _parse_chunck(in_paths[0], G1MG, parse_g1mg)
-		g1ms = _parse_chunck(in_paths[1], G1MS, parse_g1ms, bone_names)
+	g1mg_dic = {}
+	for i in xrange(len(in_paths) - 1):
+		name = os.path.splitext(os.path.split(in_paths[i])[1])[0]
+		g1mg = _parse_chunck(in_paths[i], G1MG, parse_g1mg)
+		g1mg_dic[name] = g1mg
 
-	if g1mg:
-		gtb = g1m_export.export_gtb(g1mg, g1ms)
+	if g1mg_dic:
+		gtb = g1m_export.export_gtb(g1mg_dic, g1ms)
 
 	if gtb and tex_path:
 		basename = os.path.split(tex_path)[1]
@@ -502,8 +504,7 @@ def parse_g1ms(data, bone_names=()):
 			[0, 0, scale[2], 0],
 			[0, 0, 0, 1]
 		])
-		# x,y,z,w or w,x,y,z
-		qw, qx, qy, qz = rot
+		qx, qy, qz, qw = rot
 		rot_mat = numpy.matrix([
 			[1 - 2*qy*qy - 2*qz*qz, 2*qx*qy-2*qz*qw, 2*qx*qz + 2*qy*qw, 0],
 			[2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz, 2*qy*qz - 2*qx*qw, 0],
@@ -570,27 +571,49 @@ OP_PARSE = 2
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Parsing, dumping g1m files.')
-	parser.add_argument('-i', "--in_paths", nargs="+", type=str, required=True,
+	parser.add_argument('-i', "--in_paths", nargs="+", type=str,
 						help="g1m file paths(*.g1m) provided in order: mesh, skeleton, .... \nHint: mesh file is named as xxxx_default.g1m by convention.")
 	parser.add_argument('-t', "--tex_path", type=str, help="texture path(*.g1t).")
-	#parser.add_argument('-b', "--bone_name_path", type=str, help="bone name path(*.bin).")
+	parser.add_argument('-r', "--root_path", type=str, help="specify a model folder unpacked from a archive file(*.elixir.gz). If this argument is specified, -i -t -b will be ignored.")
+	parser.add_argument('-b', "--bone_name_path", type=str, help="bone name path(*.bin).")
 	args = parser.parse_args()
 
-	inpath = args.in_paths[0]
-	tex_path = args.tex_path
+	if args.root_path:
+		# g1t: texture / bin: bone name / g1m: model / ${folder}.g1m: skeleton
+		folder = os.path.split(args.root_path)[1]
+		g1t = glob.glob(os.path.join(args.root_path, "*.g1t"))[0]
+		bin = glob.glob(os.path.join(args.root_path, "*.bin"))[0]
+		g1m = list(glob.glob(os.path.join(args.root_path, "*.g1m")))
+		skel_g1m = folder + ".g1m"
+		# set skel_g1m as the last element
+		for i, g1m_path in enumerate(g1m):
+			if os.path.split(g1m_path)[1] == skel_g1m:
+				print "moving skeleton g1m to last element"
+				g1m[i], g1m[-1] = g1m[-1], g1m[i]
+				break
+	else:
+		g1m = args.in_paths
+		g1t = args.tex_path
+		bin = args.bone_name_path
+	inpath = g1m[0]
+	tex_path = g1t
 
-	bone_names = parse_bone_names_from_package_folder(inpath)
+	if bin:
+		bone_names = parse_bone_names(bin)
+	else:
+		bone_names = parse_bone_names_from_package_folder(inpath)
 	print "bone_names count: %d" % len(bone_names)
 
 	op = OP_DUMP_GTB
 	if op == OP_PARSE:
-		fin = open(inpath, "rb")
-		data = fin.read()
-		fin.close()
-		parse(data, bone_names)
+		for inpath in g1m:
+			fin = open(inpath, "rb")
+			data = fin.read()
+			fin.close()
+			parse(data, bone_names)
 	elif op == OP_DUMP_GTB:
 		outpath = inpath + ".gtb"
-		dump_gtb(args.in_paths, outpath, compressed=False, tex_path=tex_path, bone_names=bone_names)
+		dump_gtb(g1m, outpath, compressed=False, tex_path=tex_path, bone_names=bone_names)
 	elif op == OP_DUMP_OBJ:
 		outpath = inpath + ".obj"
 		dump_obj(inpath, outpath)
