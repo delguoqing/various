@@ -8,6 +8,7 @@ import zlib
 from util import get_getter, count, summary, summary_all, dump_data, log, swap_fourCC
 from game_util import parse_bone_names_from_package_folder
 from consts import *
+import argparse
 
 import g1m_export
 
@@ -42,7 +43,7 @@ class CMeshInfo(object):
 def parse(data, bone_names=()):
 	ignore_chunks = set([
 		G1M_0036,
-		G1MS0032,
+		#G1MS0032,
 		G1MM0020,
 	])
 	for chunk_data in iter_chunk(data):
@@ -81,22 +82,29 @@ def dump_obj(in_path, out_path):
 		fout.close()
 	return None
 
-def dump_gtb(in_path, out_path, compressed=True, tex_path=""):
+def _parse_chunck(in_path, prefix, parse_func, *args):
 	fin = open(in_path, "rb")
 	data = fin.read()
 	fin.close()
-
-	g1mg = {}
 	for chunk_data in iter_chunk(data):
 		get = get_getter(chunk_data, "<")
 		chunk_name = get(0x0, "8s")
 		chunk_size = get(0x8, "I")
-		if chunk_name.startswith(G1MG):
-			g1mg = parse_g1mg(chunk_data)
-			break
+		if chunk_name.startswith(prefix):
+			return parse_func(chunk_data, *args)
+
+def dump_gtb(in_paths, out_path, compressed=True, tex_path="", bone_names=None):
+	g1mg = {}
+	g1ms = {}
+
+	if len(in_paths) == 1:
+		g1mg = _parse_chunck(in_paths[0], G1MG, parse_g1mg)
+	elif len(in_paths) >= 2:
+		g1mg = _parse_chunck(in_paths[0], G1MG, parse_g1mg)
+		g1ms = _parse_chunck(in_paths[1], G1MS, parse_g1ms, bone_names)
 
 	if g1mg:
-		gtb = g1m_export.export_gtb(g1mg)
+		gtb = g1m_export.export_gtb(g1mg, g1ms)
 
 	if gtb and tex_path:
 		basename = os.path.split(tex_path)[1]
@@ -438,17 +446,21 @@ def parse_g1mg(data):
 	
 # s = skeleton
 def parse_g1ms(data, bone_names=()):
+	g1ms = {
+		"bones": []
+	}
+
 	get = get_getter(data, "<")
 	fourcc = get(0x0, "8s")
 	assert fourcc == G1MS0032, "invalid g1ms chunk"
 	g1ms_size = get(0x8, "I")
 	assert g1ms_size == len(data), "invalid g1ms size"
 	bone_info_offset = get(0xc, "I")
-	
+
 	unk0 = get(0x10, "I")
-	assert unk0 in (0, 0x80000000)	# 0x0 		 -- dummy skeleton
-									# 0x80000000 -- normal skeleton
-									# unk0 is probably a float (0.0 or -0.0)
+	assert unk0 in (0x1, 0x0), "unk0=0x%x" % unk0	# 0x0 		 -- dummy skeleton
+															# 0x80000000 -- normal skeleton
+															# unk0 is probably a float (0.0 or -0.0)
 
 	bone_count = get(0x14, "H")
 	bone_slot_count = get(0x16, "H")
@@ -465,31 +477,64 @@ def parse_g1ms(data, bone_names=()):
 	max_bone_index = get(0x1c + bone_slot_count * 2, "h")
 	assert max_bone_index == bone_count - 1
 
+	print "bone_count", bone_count
+
+	# default bone names
+	if not bone_names:
+		bone_names = ["Bone%d" % i for i in xrange(bone_count)]
+
 	off = bone_info_offset
 	for i in xrange(bone_count):
 		scale = get(off, "3f")
 		parent = get(off + 0xc, "i")
 		rot = get(off + 0x10, "4f")
 		pos = get(off + 0x20, "4f")
-		
-		if bone_names:
-			# print bone_names, parent
-			if parent < 0:
-				assert parent in (-1, -2147483648), "whatever"
-				parent_name = "nil"
-			else:
-				parent_name = bone_names[parent]
-			my_name = bone_names[i]
+
+		trans_mat = numpy.matrix([
+			[1, 0, 0, 0],
+			[0, 1, 0, 0],
+			[0, 0, 1, 0],
+			[pos[0], pos[1], pos[2], pos[3]]
+		])
+		scale_mat = numpy.matrix([
+			[scale[0], 0, 0, 0],
+			[0, scale[1], 0, 0],
+			[0, 0, scale[2], 0],
+			[0, 0, 0, 1]
+		])
+		# x,y,z,w or w,x,y,z
+		qw, qx, qy, qz = rot
+		rot_mat = numpy.matrix([
+			[1 - 2*qy*qy - 2*qz*qz, 2*qx*qy-2*qz*qw, 2*qx*qz + 2*qy*qw, 0],
+			[2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz, 2*qy*qz - 2*qx*qw, 0],
+			[2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy, 0],
+			[0, 0, 0, 1],
+		])
+		mat = scale_mat * rot_mat.T * trans_mat
+
+		# print bone_names, parent
+		if parent < 0:
+			assert parent in (-1, -2147483648), "whatever"
+			parent_name = "nil"
 		else:
-			my_name = parent_name = ""
-			
+			parent_name = bone_names[parent]
+		my_name = bone_names[i]
+
 		print "bone %d: %s; parent %d: %s" % (i, my_name, parent, parent_name)
 		print "scale: (%f, %f, %f)" % scale
 		print "rot : (%f, %f, %f, %f)" % rot
 		print "pos : (%f, %f, %f, %f)" % pos
+		print "mat:", mat
 		assert math.fabs(rot[0] ** 2 + rot[1] ** 2 + rot[2] ** 2 + rot[3] ** 2 - 1.0) < 0.01
 		assert math.fabs(pos[-1] - 1.0) < 0.01
 		off += 0x30
+
+		g1ms["bones"].append({
+			"name": my_name,
+			"parent": parent,
+			"matrix": mat,
+		})
+	return g1ms
 			
 G1MG_SUBCHUNK_HANDLER = {
 	# 0x10001: parse_g1mg_subchunk_0x10001,
@@ -519,22 +564,33 @@ def parse_g1mm(data):
 		for j in xrange(4):
 			print mat[j * 4: (j + 1) * 4]
 
+OP_DUMP_OBJ = 0
+OP_DUMP_GTB = 1
+OP_PARSE = 2
+
 if __name__ == '__main__':
-	inpath = sys.argv[1]
-	if len(sys.argv) > 2:
-		tex_path = sys.argv[2]
-	else:
-		tex_path = ""
+	parser = argparse.ArgumentParser(description='Parsing, dumping g1m files.')
+	parser.add_argument('-i', "--in_paths", nargs="+", type=str, required=True,
+						help="g1m file paths(*.g1m) provided in order: mesh, skeleton, .... \nHint: mesh file is named as xxxx_default.g1m by convention.")
+	parser.add_argument('-t', "--tex_path", type=str, help="texture path(*.g1t).")
+	#parser.add_argument('-b', "--bone_name_path", type=str, help="bone name path(*.bin).")
+	args = parser.parse_args()
+
+	inpath = args.in_paths[0]
+	tex_path = args.tex_path
 
 	bone_names = parse_bone_names_from_package_folder(inpath)
-
-	outpath = inpath + ".gtb"
-	dump_gtb(inpath, outpath, compressed=False, tex_path=tex_path)
-
 	print "bone_names count: %d" % len(bone_names)
 
-	# outpath = inpath + ".obj"
-	# dump_obj(inpath, outpath)
-
-	# parse(data, bone_names)
-	
+	op = OP_DUMP_GTB
+	if op == OP_PARSE:
+		fin = open(inpath, "rb")
+		data = fin.read()
+		fin.close()
+		parse(data, bone_names)
+	elif op == OP_DUMP_GTB:
+		outpath = inpath + ".gtb"
+		dump_gtb(args.in_paths, outpath, compressed=False, tex_path=tex_path, bone_names=bone_names)
+	elif op == OP_DUMP_OBJ:
+		outpath = inpath + ".obj"
+		dump_obj(inpath, outpath)

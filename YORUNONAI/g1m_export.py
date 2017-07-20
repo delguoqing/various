@@ -147,7 +147,7 @@ def export_obj(g1mg):
 
 	return "\n".join(text)
 
-def export_gtb(g1mg):
+def export_gtb(g1mg, g1ms=None):
 	vb_list = parse_vb(g1mg)
 	if not vb_list:
 		return
@@ -182,8 +182,14 @@ def export_gtb(g1mg):
 			msh = {
 				"flip_v": 0, "double_sided": 0, "shade_smooth": True,
 				"vertex_num": mi.vert_count, "position": [], "indices": [],
-				"max_involved_joint": 0,
 			}
+			if g1ms:
+				msh["max_involved_joint"] = 4
+				msh["joints"] = []
+				msh["weights"] = []
+			else:
+				msh["max_involved_joint"] = 0
+
 			gtb["objects"]["msh%d" % j] = msh
 
 			try:
@@ -209,6 +215,9 @@ def export_gtb(g1mg):
 					sematics = "TEXCOORD" + str(uv_chnl_idx)
 					u, v = (sematics in vb) and (vb[sematics][i]) or (0.0, 0.0)
 					msh["uv" + str(_k)].extend((u, -v))
+				if msh["max_involved_joint"] > 0:
+					msh["weights"].extend(vb["BLENDWEIGHTS"][i])
+					msh["joints"].extend(vb["BLENDINDICES"][i])
 
 			# dumping tri strip
 			is_tri_strip = True
@@ -226,6 +235,16 @@ def export_gtb(g1mg):
 				max_index = max(msh["indices"])
 				print "min_index", min_index
 				print "max_index", max_index
+
+	if g1ms:
+		skel = gtb["skeleton"] = {}
+		skel["name"] = map(lambda b: b["name"], g1ms["bones"])
+		skel["parent"] = map(lambda b: b["parent"] < 0 and -1 or b["parent"], g1ms["bones"])
+		skel["matrix"] = []
+		skel["bone_id"] = []
+		for i, b in enumerate(g1ms["bones"]):
+			skel["bone_id"].append(i)
+			skel["matrix"].extend(b["matrix"].getA1())
 
 	return gtb
 
